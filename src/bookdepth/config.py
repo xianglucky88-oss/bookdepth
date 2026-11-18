@@ -11,6 +11,7 @@ SPEC = SimpleNamespace(
     endpoint="items",
     columns=["id", "name", "value", "status", "ts", "bid", "ask"],
     page_size=4,
+    book_page_size=3,
     int_fields=["value"],
     ts_field="ts",
 )

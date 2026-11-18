@@ -6,12 +6,14 @@ import json
 from fastapi import FastAPI, Request, Response
 from bookdepth.config import SPEC
 from bookdepth.mockdata import build_rows, extra_row
+from mockapp.bookdata import base_rows as book_base_rows, extra_rows
 
 app = FastAPI(title="Local source")
 _ALL = build_rows()
 _extra = []
 _verified_sessions = set()
 _accepted_tokens = set()
+_book_extra = []
 
 def _data():
     return _ALL + _extra
@@ -38,6 +40,32 @@ def items(page: int = 1):
 def refresh():
     _extra.append(extra_row(len(_extra) + 1))
     return {"total": len(_data())}
+
+
+def _book_data():
+    return book_base_rows() + _book_extra
+
+
+@app.get("/book")
+def book(page: int = 1):
+    # Deterministic throttling: the first two calls of a fresh app process
+    # are rate limited.  The client retries with backoff and must not lose or
+    # duplicate data (429 responses carry no rows).
+    app.__dict__["_book_flaky_n"] = app.__dict__.get("_book_flaky_n", 0) + 1
+    if app.__dict__["_book_flaky_n"] <= 2:
+        return Response(status_code=429)
+    ps = SPEC.book_page_size
+    data = _book_data()
+    lo, hi = (page - 1) * ps, page * ps
+    items = [dict(r) for r in data[lo:hi]]
+    nxt = data[hi:hi + ps]
+    return {"items": items, "page": page, "has_more": bool(nxt)}
+
+
+@app.get("/book/refresh")
+def book_refresh():
+    _book_extra.extend(extra_rows())
+    return {"total": len(_book_data())}
 
 @app.get("/probe")
 def probe():
